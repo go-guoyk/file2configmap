@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"flag"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ConfigMap struct {
@@ -31,9 +33,14 @@ func main() {
 
 	var optName string
 	var optNamespace string
-	flag.StringVar(&optName, "name", "unknown", "name of the ConfigMap")
-	flag.StringVar(&optNamespace, "namespace", "default", "namespace of the ConfigMap")
+	flag.StringVar(&optName, "n", "", "name of the ConfigMap")
+	flag.StringVar(&optNamespace, "ns", "default", "namespace of the ConfigMap")
 	flag.Parse()
+
+	if optName == "" {
+		err = errors.New("missing argument -n")
+		return
+	}
 
 	configMap := ConfigMap{
 		APIVersion: "v1",
@@ -44,12 +51,26 @@ func main() {
 	configMap.Metadata.Name = optName
 	configMap.Metadata.Namespace = optNamespace
 
-	for _, file := range flag.Args() {
+	for _, arg := range flag.Args() {
+		var key string
+		var file string
+		argSplit := strings.Split(arg, ":")
+		if len(argSplit) == 1 {
+			key = filepath.Base(argSplit[0])
+			file = argSplit[0]
+		} else if len(argSplit) == 2 {
+			key = argSplit[1]
+			file = argSplit[0]
+		}
+		if key == "" || file == "" {
+			err = errors.New("invalid argument '" + arg + "'")
+			return
+		}
 		var buf []byte
 		if buf, err = ioutil.ReadFile(file); err != nil {
 			return
 		}
-		configMap.BinaryData[filepath.Base(file)] = base64.StdEncoding.EncodeToString(buf)
+		configMap.BinaryData[key] = base64.StdEncoding.EncodeToString(buf)
 	}
 
 	enc := yaml.NewEncoder(os.Stdout)
